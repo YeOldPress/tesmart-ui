@@ -1,0 +1,19 @@
+.{
+    .name = .tesmart_ui,
+    .version = "0.4.0",
+    .fingerprint = 0x6743577010d522ac,
+    .minimum_zig_version = "0.15.0",
+
+    .dependencies = .{
+        .raylib_zig = .{
+            .url = "git+https://github.com/raylib-zig/raylib-zig?ref=devel#cd71c85d571027ac8033357f83b124ee051825b3",
+            .hash = "raylib_zig-5.6.0-dev-KE8REENOBQC-m5nK7M2b5aKSIubJPbPLUYcRhT7aT3RN",
+        },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
