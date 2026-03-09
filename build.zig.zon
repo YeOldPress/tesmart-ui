@@ -1,0 +1,15 @@
+.{
+    .name = "tesmart-ui-zig",
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .raylib_zig = .{
+            // Before building, run:
+            //   zig fetch --save https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz
+            // That command will populate this field with the correct hash.
+            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
+            .hash = "12200000000000000000000000000000000000000000000000000000000000000000", // placeholder – replaced by `zig fetch --save`
+        },
+    },
+    .paths = .{"."},
+}
