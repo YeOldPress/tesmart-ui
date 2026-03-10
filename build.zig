@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
             // pkg-config names — requires: gtk3-devel libayatana-appindicator-gtk3-devel
             exe_mod.linkSystemLibrary("ayatana-appindicator3-0.1", .{});
             exe_mod.linkSystemLibrary("gtk+-3.0", .{});
+            exe_mod.linkSystemLibrary("x11", .{});
         },
         .windows => {
             exe_mod.addCSourceFile(.{

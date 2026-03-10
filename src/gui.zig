@@ -301,18 +301,22 @@ pub const Gui = struct {
             self.prepareConnectionFields();
         }
 
+        // Start in event-waiting mode (idle, ~0% CPU)
+        var event_waiting = true;
+        rl.enableEventWaiting();
+
         while (!rl.windowShouldClose() and !self.quit_requested) {
             self.checkForInputChanges();
 
-            if (self.isAnimating()) {
-                self.needs_redraw = true;
-                rl.setTargetFPS(60);
-            } else if (!rl.isWindowFocused()) {
-                rl.setTargetFPS(10); // keep responsive for system-tray events
-            } else if (self.needs_redraw) {
-                rl.setTargetFPS(30);
-            } else {
-                rl.setTargetFPS(15);
+            const animating = self.isAnimating();
+
+            // Switch between event-waiting (idle) and continuous (animating) modes
+            if (animating and event_waiting) {
+                rl.disableEventWaiting();
+                event_waiting = false;
+            } else if (!animating and !event_waiting) {
+                rl.enableEventWaiting();
+                event_waiting = true;
             }
 
             self.update();
@@ -361,6 +365,7 @@ pub const Gui = struct {
 
         const tex = rl.loadTexture(path_slice) catch return;
         if (tex.width > 0 and tex.height > 0) {
+            rl.setTextureFilter(tex, .bilinear);
             self.icon_textures[idx] = tex;
             self.icon_loaded[idx] = true;
         }
@@ -477,10 +482,12 @@ pub const Gui = struct {
             self.pending_port = 0;
             self.pending_until_ns = 0;
             self.setStatus("Switch to {d} failed", .{port});
+            tray.wakeMainThread();
             return;
         };
         if (self.cfg.fast_mode) {
             self.setStatus("Switched (fast) → {d}", .{port});
+            tray.wakeMainThread();
             return;
         }
         if (self.cfg.verify_after_set) {
@@ -490,14 +497,17 @@ pub const Gui = struct {
                     if (cur == port) {
                         self.clearPendingIfMatch(port);
                         self.setStatus("Switched to input {d}", .{port});
+                        tray.wakeMainThread();
                         return;
                     }
                 } else |_| {}
             }
             self.setStatusStr("Switched (unverified)");
+            tray.wakeMainThread();
             return;
         }
         self.setStatus("Switched to input {d}", .{port});
+        tray.wakeMainThread();
     }
 
     fn processTrayAction(self: *Gui) void {
@@ -587,15 +597,18 @@ pub const Gui = struct {
     fn pingThread(self: *Gui) void {
         self.setStatusStr("Pinging...");
         self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
+        tray.wakeMainThread();
         const start = std.time.nanoTimestamp();
         self.cli.ping() catch {
             self.setStatusStr("Ping failed");
             self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
+            tray.wakeMainThread();
             return;
         };
         const elapsed_ms = @divFloor(std.time.nanoTimestamp() - start, std.time.ns_per_ms);
         self.setStatus("Ping OK ({d} ms)", .{elapsed_ms});
         self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
+        tray.wakeMainThread();
     }
 
     fn getToolbarAction(self: *Gui) ToolbarAction {
@@ -634,8 +647,10 @@ pub const Gui = struct {
                 continue;
             }
             if (self.cli.getActiveInput()) |port| {
+                const changed = (port != self.polled_port.load(.monotonic));
                 self.polled_port.store(port, .monotonic);
                 self.poll_error = false;
+                if (changed) tray.wakeMainThread();
             } else |_| {
                 self.poll_error = true;
             }
@@ -1407,6 +1422,7 @@ pub const Gui = struct {
     fn netGetThread(self: *Gui) void {
         const net_cfg = self.cli.getNetworkConfigASCII() catch {
             self.setStatusStr("Failed to read network config");
+            tray.wakeMainThread();
             return;
         };
         self.input_fields[0] = InputField.initWith(net_cfg.ipSlice());
@@ -1420,6 +1436,7 @@ pub const Gui = struct {
         self.input_fields[3] = InputField.initWith(ps);
         self.input_fields[3].active = true;
         self.setStatusStr("Fetched network configuration");
+        tray.wakeMainThread();
     }
 
     fn netSetThread(self: *Gui) void {
@@ -1429,10 +1446,12 @@ pub const Gui = struct {
         const port_s = self.input_fields[3].slice();
         const p = std.fmt.parseUnsigned(u16, port_s, 10) catch {
             self.setStatusStr("Invalid port");
+            tray.wakeMainThread();
             return;
         };
         self.cli.setNetworkConfigASCII(ip, p, mask, gw) catch {
             self.setStatusStr("Failed to set network config");
+            tray.wakeMainThread();
             return;
         };
         @memcpy(self.cfg.ip[0..ip.len], ip);
@@ -1441,6 +1460,7 @@ pub const Gui = struct {
         config.save(self.cfg) catch {};
         self.cli.setTarget(ip, p, self.cfg.get_timeout_ms, self.cfg.set_timeout_ms);
         self.setStatusStr("Network config sent — power-cycle switch");
+        tray.wakeMainThread();
     }
 
     // ── Raw Hex dialog ──
@@ -1490,8 +1510,10 @@ pub const Gui = struct {
         const hex = self.input_fields[0].slice();
         self.dialog_result_len = self.cli.rawHexSend(hex, 1200, &self.dialog_result) catch {
             self.setStatusStr("Raw hex failed");
+            tray.wakeMainThread();
             return;
         };
+        tray.wakeMainThread();
     }
 
     // ── About dialog ──

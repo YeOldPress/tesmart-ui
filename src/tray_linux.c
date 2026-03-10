@@ -6,6 +6,7 @@
 #include <gtk/gtk.h>
 #include <libayatana-appindicator/app-indicator.h>
 #include <string.h>
+#include <X11/Xlib.h>
 
 typedef void (*tray_callback_fn)(int menu_id);
 
@@ -139,4 +140,17 @@ void tray_cleanup(void) {
     // g_menu is owned by the indicator — don't destroy it separately
     g_menu = NULL;
     g_callback = NULL;
+}
+
+// Post an empty X11 event to unblock raylib's event-waiting sleep
+void wake_main_thread(void) {
+    // Use XSendEvent to wake the GLFW event loop
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return;
+    XEvent ev = {0};
+    ev.type = ClientMessage;
+    Window root = DefaultRootWindow(dpy);
+    XSendEvent(dpy, root, False, SubstructureNotifyMask, &ev);
+    XFlush(dpy);
+    XCloseDisplay(dpy);
 }

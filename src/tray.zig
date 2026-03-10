@@ -24,6 +24,8 @@ var g_action: std.atomic.Value(i32) = std.atomic.Value(i32).init(0);
 
 fn trayCallback(menu_id: c_int) callconv(.c) void {
     g_action.store(@intCast(menu_id), .release);
+    // Wake the main thread from event-waiting sleep
+    if (comptime has_tray) wake_main_thread();
 }
 
 // ── C extern declarations ──
@@ -31,6 +33,7 @@ extern fn tray_init(cb: *const fn (c_int) callconv(.c) void, port: c_int, buz: c
 extern fn tray_update(port: c_int, buz: c_int, names: *const [16][*:0]const u8, visible: *const [16]c_int) void;
 extern fn tray_poll_events() void;
 extern fn tray_cleanup() void;
+extern fn wake_main_thread() void;
 
 // ── Name buffer (null-terminated copies for C) ──
 var name_bufs: [16][65]u8 = undefined;
@@ -115,4 +118,10 @@ pub fn pollAction() Action {
 pub fn hasPendingAction() bool {
     if (comptime !has_tray) return false;
     return g_action.load(.monotonic) != 0;
+}
+
+/// Wake the main thread from event-waiting sleep (e.g. from a background poller thread).
+pub fn wakeMainThread() void {
+    if (comptime !has_tray) return;
+    wake_main_thread();
 }

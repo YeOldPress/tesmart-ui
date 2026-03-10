@@ -26,6 +26,7 @@ static NOTIFYICONDATAW  g_nid;
 static HMENU            g_menu = NULL;
 static HANDLE           g_thread = NULL;
 static volatile int     g_running = 0;
+static DWORD            g_main_thread_id = 0;
 
 // Current state for menu rebuild
 static int              g_active_port = 0;
@@ -139,6 +140,7 @@ void tray_init(tray_callback_fn callback, int active_port, int buzzer_on,
     g_callback = callback;
     g_active_port = active_port;
     g_buzzer_on = buzzer_on;
+    g_main_thread_id = GetCurrentThreadId(); // called from main thread
 
     for (int i = 0; i < 16; i++) {
         strncpy(g_names[i], names[i], 64);
@@ -178,4 +180,10 @@ void tray_cleanup(void) {
         g_menu = NULL;
     }
     g_callback = NULL;
+}
+
+// Post a WM_NULL to unblock raylib's event-waiting sleep
+void wake_main_thread(void) {
+    if (g_main_thread_id != 0)
+        PostThreadMessage(g_main_thread_id, WM_NULL, 0, 0);
 }
