@@ -24,27 +24,30 @@ const FONT_SPACING: f32 = 1.0;
 const ICON_DISPLAY_SZ: f32 = 48.0;
 
 // ── Colors ──
-const BG = rl.Color{ .r = 25, .g = 25, .b = 30, .a = 255 };
-const TILE_NORMAL = rl.Color{ .r = 60, .g = 60, .b = 60, .a = 255 };
-const TILE_ACTIVE = rl.Color{ .r = 0, .g = 120, .b = 255, .a = 255 };
-const TILE_HOVER = rl.Color{ .r = 80, .g = 80, .b = 80, .a = 255 };
-const TEXT_WHITE = rl.Color{ .r = 220, .g = 220, .b = 220, .a = 255 };
-const TEXT_DIM = rl.Color{ .r = 150, .g = 150, .b = 150, .a = 255 };
-const TOOLBAR_BG = rl.Color{ .r = 35, .g = 35, .b = 40, .a = 255 };
-const STATUS_BG = rl.Color{ .r = 30, .g = 30, .b = 35, .a = 255 };
-const DIALOG_BG = rl.Color{ .r = 45, .g = 45, .b = 50, .a = 255 };
-const DIALOG_OVERLAY = rl.Color{ .r = 0, .g = 0, .b = 0, .a = 160 };
-const BTN_NORMAL = rl.Color{ .r = 55, .g = 55, .b = 65, .a = 255 };
-const BTN_HOVER = rl.Color{ .r = 70, .g = 70, .b = 80, .a = 255 };
-const BTN_ACTIVE = rl.Color{ .r = 0, .g = 100, .b = 220, .a = 255 };
-const INPUT_BG = rl.Color{ .r = 35, .g = 35, .b = 40, .a = 255 };
-const INPUT_BORDER = rl.Color{ .r = 80, .g = 80, .b = 90, .a = 255 };
-const INPUT_FOCUS = rl.Color{ .r = 0, .g = 120, .b = 255, .a = 255 };
-const ACCENT = rl.Color{ .r = 0, .g = 140, .b = 255, .a = 255 };
-const ICON_PLACEHOLDER = rl.Color{ .r = 80, .g = 80, .b = 90, .a = 255 };
+const BG = rl.Color{ .r = 18, .g = 18, .b = 24, .a = 255 };
+const TILE_NORMAL = rl.Color{ .r = 32, .g = 34, .b = 42, .a = 255 };
+const TILE_ACTIVE = rl.Color{ .r = 22, .g = 100, .b = 220, .a = 255 };
+const TILE_HOVER = rl.Color{ .r = 42, .g = 44, .b = 56, .a = 255 };
+const TEXT_WHITE = rl.Color{ .r = 230, .g = 232, .b = 240, .a = 255 };
+const TEXT_DIM = rl.Color{ .r = 120, .g = 124, .b = 140, .a = 255 };
+const TOOLBAR_BG = rl.Color{ .r = 22, .g = 22, .b = 30, .a = 255 };
+const STATUS_BG = rl.Color{ .r = 16, .g = 16, .b = 22, .a = 255 };
+const DIALOG_BG = rl.Color{ .r = 28, .g = 30, .b = 38, .a = 255 };
+const DIALOG_OVERLAY = rl.Color{ .r = 0, .g = 0, .b = 0, .a = 180 };
+const BTN_NORMAL = rl.Color{ .r = 38, .g = 40, .b = 50, .a = 255 };
+const BTN_HOVER = rl.Color{ .r = 52, .g = 54, .b = 68, .a = 255 };
+const BTN_ACTIVE = rl.Color{ .r = 22, .g = 100, .b = 220, .a = 255 };
+const INPUT_BG = rl.Color{ .r = 22, .g = 24, .b = 32, .a = 255 };
+const INPUT_BORDER = rl.Color{ .r = 55, .g = 58, .b = 70, .a = 255 };
+const INPUT_FOCUS = rl.Color{ .r = 60, .g = 130, .b = 255, .a = 255 };
+const ACCENT = rl.Color{ .r = 60, .g = 130, .b = 255, .a = 255 };
+const ICON_PLACEHOLDER = rl.Color{ .r = 55, .g = 58, .b = 70, .a = 255 };
 const WHITE = rl.Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
-const GLOW_COLOR = rl.Color{ .r = 0, .g = 180, .b = 255, .a = 255 };
-const NEON_COLOR = rl.Color{ .r = 0, .g = 200, .b = 255, .a = 255 };
+const GLOW_COLOR = rl.Color{ .r = 60, .g = 160, .b = 255, .a = 255 };
+const NEON_COLOR = rl.Color{ .r = 60, .g = 180, .b = 255, .a = 255 };
+const TILE_BORDER = rl.Color{ .r = 48, .g = 50, .b = 62, .a = 255 };
+const TILE_ACTIVE_GLOW = rl.Color{ .r = 22, .g = 100, .b = 220, .a = 40 };
+const SEPARATOR = rl.Color{ .r = 40, .g = 42, .b = 52, .a = 255 };
 const NEON_CYCLE_NS: i128 = 2000 * std.time.ns_per_ms;
 const NEON_SEG_FRAC: f32 = 0.25; // bright segment covers 25% of perimeter
 const NEON_DURATION_NS: i128 = 3000 * std.time.ns_per_ms;
@@ -305,7 +308,7 @@ pub const Gui = struct {
                 self.needs_redraw = true;
                 rl.setTargetFPS(60);
             } else if (!rl.isWindowFocused()) {
-                rl.setTargetFPS(1);
+                rl.setTargetFPS(10); // keep responsive for system-tray events
             } else if (self.needs_redraw) {
                 rl.setTargetFPS(30);
             } else {
@@ -599,11 +602,11 @@ pub const Gui = struct {
         _ = self;
         const mx = rl.getMouseX();
         const my = rl.getMouseY();
-        if (my < 0 or my >= TOOLBAR_H) return .none;
+        if (my < 5 or my >= 35) return .none;
         const buttons = [_]ToolbarAction{ .connection, .edit, .network, .ping, .buzzer, .filter, .about };
         for (buttons, 0..) |btn, i| {
-            const bx: i32 = @intCast(10 + i * 90);
-            if (mx >= bx and mx < bx + 80) return btn;
+            const bx: i32 = @intCast(12 + i * 92);
+            if (mx >= bx and mx < bx + 82) return btn;
         }
         return .none;
     }
@@ -663,27 +666,34 @@ pub const Gui = struct {
 
     fn drawToolbar(self: *Gui) void {
         rl.drawRectangle(0, 0, rl.getScreenWidth(), TOOLBAR_H, TOOLBAR_BG);
+        // Separator line below toolbar
+        rl.drawRectangle(0, TOOLBAR_H - 1, rl.getScreenWidth(), 1, SEPARATOR);
         const labels = [_][:0]const u8{ "Connect", "Edit", "Network", "Ping", "Buzzer", "Filter", "About" };
         const mx = rl.getMouseX();
         const my = rl.getMouseY();
         for (labels, 0..) |label, i| {
-            const bx: i32 = @intCast(10 + i * 90);
-            const hovered = (mx >= bx and mx < bx + 80 and my >= 4 and my < TOOLBAR_H - 4);
-            // Buzzer button (index 4): green when enabled
+            const bx: i32 = @intCast(12 + i * 92);
+            const by: i32 = 5;
+            const bw: i32 = 82;
+            const bh: i32 = 30;
+            const hovered = (mx >= bx and mx < bx + bw and my >= by and my < by + bh);
             const is_buzzer = (i == 4);
-            // Filter button (index 5): green when filtering
             const is_filter = (i == 5);
             const color = if (is_buzzer and self.buzzer_enabled)
-                rl.Color{ .r = 0, .g = 120, .b = 80, .a = 255 }
+                rl.Color{ .r = 20, .g = 120, .b = 90, .a = 255 }
             else if (is_filter and self.hide_inactive)
-                rl.Color{ .r = 0, .g = 120, .b = 80, .a = 255 }
+                rl.Color{ .r = 20, .g = 120, .b = 90, .a = 255 }
             else if (hovered)
                 BTN_HOVER
             else
                 BTN_NORMAL;
-            rl.drawRectangleRounded(.{ .x = @floatFromInt(bx), .y = 5, .width = 80, .height = 30 }, 0.3, 6, color);
+            rl.drawRectangleRounded(.{ .x = @floatFromInt(bx), .y = @floatFromInt(by), .width = @floatFromInt(bw), .height = @floatFromInt(bh) }, 0.4, 8, color);
+            // Subtle border on toolbar buttons
+            if (!hovered and !(is_buzzer and self.buzzer_enabled) and !(is_filter and self.hide_inactive)) {
+                rl.drawRectangleRoundedLines(.{ .x = @floatFromInt(bx), .y = @floatFromInt(by), .width = @floatFromInt(bw), .height = @floatFromInt(bh) }, 0.4, 8, TILE_BORDER);
+            }
             const tw = measureTxt(label, SMALL_SZ);
-            drawTxt(label, bx + @divFloor(80 - tw, 2), 5 + @divFloor(30 - SMALL_FONT, 2), SMALL_SZ, TEXT_WHITE);
+            drawTxt(label, bx + @divFloor(bw - tw, 2), by + @divFloor(bh - SMALL_FONT, 2), SMALL_SZ, TEXT_WHITE);
         }
     }
 
@@ -768,6 +778,17 @@ pub const Gui = struct {
                 TILE_NORMAL;
             const color = rl.Color{ .r = base_color.r, .g = base_color.g, .b = base_color.b, .a = tile_alpha };
 
+            // Soft glow behind active tile (always, not just during animation)
+            if (port == self.active_port and !is_animating) {
+                const glow_a = TILE_ACTIVE_GLOW;
+                rl.drawRectangleRounded(.{
+                    .x = rect.x - 4,
+                    .y = rect.y - 4,
+                    .width = rect.width + 8,
+                    .height = rect.height + 8,
+                }, 0.12, 8, rl.Color{ .r = glow_a.r, .g = glow_a.g, .b = glow_a.b, .a = glow_a.a });
+            }
+
             // Glow rings behind the tile during animation
             if (is_animating) {
                 // Outer expanding ring
@@ -780,7 +801,7 @@ pub const Gui = struct {
                         .y = rect.y - ring1_expand - 2,
                         .width = rect.width + (ring1_expand + 2) * 2,
                         .height = rect.height + (ring1_expand + 2) * 2,
-                    }, 0.15, 8, r1_col);
+                    }, 0.12, 8, r1_col);
                 }
                 // Inner glow
                 const inner_alpha: u8 = @intFromFloat((1.0 - anim_t) * 160);
@@ -790,10 +811,16 @@ pub const Gui = struct {
                     .y = rect.y - 3,
                     .width = rect.width + 6,
                     .height = rect.height + 6,
-                }, 0.15, 8, inner_col);
+                }, 0.12, 8, inner_col);
             }
 
-            rl.drawRectangleRounded(rect, 0.15, 8, color);
+            rl.drawRectangleRounded(rect, 0.12, 8, color);
+
+            // Subtle border on non-active tiles
+            if (port != self.active_port and !is_animating) {
+                const border_col = rl.Color{ .r = TILE_BORDER.r, .g = TILE_BORDER.g, .b = TILE_BORDER.b, .a = tile_alpha };
+                rl.drawRectangleRoundedLines(rect, 0.12, 8, border_col);
+            }
 
             // Color flash overlay on the tile (bright white that fades fast)
             if (is_animating and anim_t < 0.4) {
@@ -950,7 +977,9 @@ pub const Gui = struct {
         const sh = rl.getScreenHeight();
         const sw = rl.getScreenWidth();
         const y = sh - STATUS_H;
-        rl.drawRectangle(0, y, sw, STATUS_H, STATUS_BG);
+        // Separator line above status bar
+        rl.drawRectangle(0, y, sw, 1, SEPARATOR);
+        rl.drawRectangle(0, y + 1, sw, STATUS_H - 1, STATUS_BG);
         var z: [257:0]u8 = std.mem.zeroes([257:0]u8);
         const n = @min(self.status_len, 256);
         @memcpy(z[0..n], self.status_text[0..n]);
@@ -1493,10 +1522,10 @@ pub const Gui = struct {
 
         const rect = field.rect;
         const focused = (self.focused_field != null and self.focused_field.? == idx);
-        const border = if (focused) INPUT_FOCUS else INPUT_BORDER;
+        const border = if (focused) INPUT_FOCUS else TILE_BORDER;
 
-        rl.drawRectangleRounded(rect, 0.2, 4, INPUT_BG);
-        rl.drawRectangleRoundedLines(rect, 0.2, 4, border);
+        rl.drawRectangleRounded(rect, 0.25, 6, INPUT_BG);
+        rl.drawRectangleRoundedLines(rect, 0.25, 6, border);
 
         var z: [129:0]u8 = std.mem.zeroes([129:0]u8);
         const n = @min(field.len, 128);
@@ -1659,8 +1688,10 @@ fn perimPoint(r: rl.Rectangle, t: f32, side_fracs: *const [4]f32) rl.Vector2 {
 }
 
 fn drawDialogBox(x: f32, y: f32, w: f32, h: f32) void {
-    rl.drawRectangleRounded(.{ .x = x, .y = y, .width = w, .height = h }, 0.05, 8, DIALOG_BG);
-    rl.drawRectangleRoundedLines(.{ .x = x, .y = y, .width = w, .height = h }, 0.05, 8, INPUT_BORDER);
+    // Shadow behind dialog
+    rl.drawRectangleRounded(.{ .x = x + 4, .y = y + 4, .width = w, .height = h }, 0.06, 8, rl.Color{ .r = 0, .g = 0, .b = 0, .a = 80 });
+    rl.drawRectangleRounded(.{ .x = x, .y = y, .width = w, .height = h }, 0.06, 8, DIALOG_BG);
+    rl.drawRectangleRoundedLines(.{ .x = x, .y = y, .width = w, .height = h }, 0.06, 8, TILE_BORDER);
 }
 
 fn drawButton(x: i32, y: i32, w: i32, h: i32, label: [:0]const u8, bg: rl.Color) void {
@@ -1668,12 +1699,17 @@ fn drawButton(x: i32, y: i32, w: i32, h: i32, label: [:0]const u8, bg: rl.Color)
     const my = rl.getMouseY();
     const hovered = (mx >= x and mx < x + w and my >= y and my < y + h);
     const color = if (hovered) BTN_HOVER else bg;
-    rl.drawRectangleRounded(.{
+    const rect = rl.Rectangle{
         .x = @floatFromInt(x),
         .y = @floatFromInt(y),
         .width = @floatFromInt(w),
         .height = @floatFromInt(h),
-    }, 0.3, 6, color);
+    };
+    rl.drawRectangleRounded(rect, 0.35, 8, color);
+    // Border on non-accent buttons
+    if (bg.r == BTN_NORMAL.r and bg.g == BTN_NORMAL.g and bg.b == BTN_NORMAL.b and !hovered) {
+        rl.drawRectangleRoundedLines(rect, 0.35, 8, TILE_BORDER);
+    }
     const tw = measureTxt(label, SMALL_SZ);
     drawTxt(label, x + @divFloor(w - tw, 2), y + @divFloor(h - SMALL_FONT, 2), SMALL_SZ, TEXT_WHITE);
 }
