@@ -365,6 +365,7 @@ pub const Gui = struct {
 
         const tex = rl.loadTexture(path_slice) catch return;
         if (tex.width > 0 and tex.height > 0) {
+            rl.setTextureFilter(tex, .bilinear);
             self.icon_textures[idx] = tex;
             self.icon_loaded[idx] = true;
         }
