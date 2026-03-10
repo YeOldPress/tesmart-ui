@@ -103,3 +103,19 @@ void tray_cleanup(void) {
     g_delegate = nil;
     g_callback = NULL;
 }
+
+// Post a synthetic NSEvent to unblock raylib's event-waiting sleep
+void wake_main_thread(void) {
+    @autoreleasepool {
+        NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                                            location:NSZeroPoint
+                                       modifierFlags:0
+                                           timestamp:0
+                                        windowNumber:0
+                                             context:nil
+                                             subtype:0
+                                               data1:0
+                                               data2:0];
+        [NSApp postEvent:event atStart:YES];
+    }
+}
