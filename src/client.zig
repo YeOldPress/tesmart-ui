@@ -1,10 +1,28 @@
 // client.zig — TCP client for TESmart binary + ASCII protocol
 const std = @import("std");
+const builtin = @import("builtin");
 const proto = @import("protocol.zig");
+const logger = @import("logger.zig");
 const posix = std.posix;
 
 const Allocator = std.mem.Allocator;
 const net = std.net;
+
+fn logBytes(comptime prefix: []const u8, data: []const u8) void {
+    var hex_buf: [256]u8 = undefined;
+    const cap = @min(data.len, 64);
+    const hex_len = proto.hexEncode(data[0..cap], &hex_buf);
+    logger.info("{s} len={d} hex={s}", .{ prefix, data.len, hex_buf[0..hex_len] });
+}
+
+fn sendAllSocket(sock: posix.socket_t, bytes: []const u8) !void {
+    var index: usize = 0;
+    while (index < bytes.len) {
+        const sent = try posix.send(sock, bytes[index..], 0);
+        if (sent == 0) return error.ConnectionResetByPeer;
+        index += sent;
+    }
+}
 
 pub const KVMNetConfig = struct {
     ip: [64]u8 = undefined,
@@ -51,6 +69,7 @@ pub const Client = struct {
         self.port = port;
         self.get_timeout_ms = get_to_ms;
         self.set_timeout_ms = set_to_ms;
+        logger.info("setTarget -> {s}:{d} get_to={d}ms set_to={d}ms", .{ ip[0..len], port, get_to_ms, set_to_ms });
     }
 
     /// Close the persistent connection (call when done).
@@ -71,11 +90,25 @@ pub const Client = struct {
     /// Return existing stream or open a new persistent connection (caller must hold mutex).
     fn ensureConnectedLocked(self: *Client) !net.Stream {
         if (self.stream) |s| return s;
-        const addr = try self.resolveAddr();
-        const s = try net.tcpConnectToAddress(addr);
-        // Set receive timeout so read() doesn't block forever
-        const tv = posix.timeval{ .sec = 0, .usec = 200_000 }; // 200ms
-        posix.setsockopt(s.handle, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(tv)) catch {};
+        const addr = self.resolveAddr() catch |err| {
+            logger.err("resolveAddr failed for {s}:{d}: {s}", .{ self.ip[0..self.ip_len], self.port, @errorName(err) });
+            return err;
+        };
+        const s = net.tcpConnectToAddress(addr) catch |err| {
+            logger.err("tcpConnect failed for {s}:{d}: {s}", .{ self.ip[0..self.ip_len], self.port, @errorName(err) });
+            return err;
+        };
+        logger.info("tcpConnect ok -> {s}:{d}", .{ self.ip[0..self.ip_len], self.port });
+        // Set receive timeout so read() doesn't block forever.
+        // Windows SO_RCVTIMEO takes a DWORD (u32) millisecond value;
+        // POSIX takes a struct timeval.
+        if (comptime builtin.os.tag == .windows) {
+            const timeout_ms: u32 = 200;
+            posix.setsockopt(s.handle, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout_ms)) catch {};
+        } else {
+            const tv = posix.timeval{ .sec = 0, .usec = 200_000 }; // 200ms
+            posix.setsockopt(s.handle, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(tv)) catch {};
+        }
         self.stream = s;
         return s;
     }
@@ -102,9 +135,12 @@ pub const Client = struct {
             }
             return err;
         };
+        defer self.disconnectLocked();
 
         const frame = proto.makeFrame(cmd, arg);
-        stream.writeAll(&frame) catch |err| {
+        logBytes("tx binary", &frame);
+        sendAllSocket(stream.handle, &frame) catch |err| {
+            logger.err("writeAll binary failed cmd=0x{x} arg=0x{x}: {s}", .{ cmd, arg, @errorName(err) });
             self.disconnectLocked();
             if (retry) {
                 std.Thread.sleep(50 * std.time.ns_per_ms);
@@ -120,11 +156,12 @@ pub const Client = struct {
             if (std.time.nanoTimestamp() >= deadline_ns) break;
 
             var read_buf: [256]u8 = undefined;
-            const n = stream.read(&read_buf) catch |err| {
-                if (err == error.WouldBlock) {
+            const n = posix.recv(stream.handle, &read_buf, 0) catch |err| {
+                if (err == error.WouldBlock or err == error.ConnectionTimedOut) {
                     std.Thread.sleep(15 * std.time.ns_per_ms);
                     continue;
                 }
+                logger.err("read binary failed cmd=0x{x} arg=0x{x}: {s}", .{ cmd, arg, @errorName(err) });
                 self.disconnectLocked();
                 if (retry and result.len == 0) {
                     std.Thread.sleep(50 * std.time.ns_per_ms);
@@ -134,6 +171,7 @@ pub const Client = struct {
             };
             if (n == 0) {
                 // EOF — peer closed connection
+                logger.warn("binary EOF cmd=0x{x} arg=0x{x}", .{ cmd, arg });
                 self.disconnectLocked();
                 if (retry and result.len == 0) {
                     std.Thread.sleep(50 * std.time.ns_per_ms);
@@ -146,13 +184,27 @@ pub const Client = struct {
             const copy_n = @min(n, space);
             @memcpy(result.buf[result.len..][0..copy_n], read_buf[0..copy_n]);
             result.len += copy_n;
+            logBytes("rx binary chunk", read_buf[0..n]);
 
             // Check for a complete frame
             var off_buf: [64]usize = undefined;
             if (proto.findFrames(result.buf[0..result.len], &off_buf) > 0) {
+                logBytes("rx binary full", result.buf[0..result.len]);
                 return result;
             }
             if (result.len >= result.buf.len) break;
+        }
+        // No bytes before deadline: force reconnect and retry once.
+        if (retry and result.len == 0) {
+            logger.warn("txrx timeout no bytes for cmd=0x{x} arg=0x{x}; reconnect+retry", .{ cmd, arg });
+            self.disconnectLocked();
+            std.Thread.sleep(50 * std.time.ns_per_ms);
+            return self.txrxLocked(cmd, arg, timeout_ms, false);
+        }
+        if (result.len == 0) {
+            logger.warn("txrx no reply for cmd=0x{x} arg=0x{x}", .{ cmd, arg });
+        } else {
+            logBytes("rx binary partial", result.buf[0..result.len]);
         }
         return result;
     }
@@ -161,13 +213,20 @@ pub const Client = struct {
     pub fn getActiveInput(self: *Client) !u8 {
         const resp = try self.txrx(proto.CMD_GET_ACTIVE, 0x00, self.get_timeout_ms);
         if (proto.scanActivePort(resp.buf[0..resp.len])) |port| {
+            logger.info("getActiveInput -> {d}", .{port});
             return port;
         }
-        // Retry once
+        // Retry once on a fresh socket.
+        logger.warn("getActiveInput no parseable port in first response; retrying", .{});
+        self.mutex.lock();
+        self.disconnectLocked();
+        self.mutex.unlock();
         const resp2 = self.txrx(proto.CMD_GET_ACTIVE, 0x00, self.get_timeout_ms) catch return error.NoReply;
         if (proto.scanActivePort(resp2.buf[0..resp2.len])) |port| {
+            logger.info("getActiveInput retry -> {d}", .{port});
             return port;
         }
+        logger.err("getActiveInput failed: NoReply", .{});
         return error.NoReply;
     }
 
@@ -223,8 +282,11 @@ pub const Client = struct {
             }
             return err;
         };
+        defer self.disconnectLocked();
 
-        stream.writeAll(payload) catch |err| {
+        logBytes("tx raw", payload);
+        sendAllSocket(stream.handle, payload) catch |err| {
+            logger.err("writeAll raw failed: {s}", .{@errorName(err)});
             self.disconnectLocked();
             if (retry) {
                 std.Thread.sleep(50 * std.time.ns_per_ms);
@@ -240,15 +302,17 @@ pub const Client = struct {
         while (true) {
             if (std.time.nanoTimestamp() >= deadline_ns) break;
             var tmp: [256]u8 = undefined;
-            const n = stream.read(&tmp) catch |err| {
-                if (err == error.WouldBlock) {
+            const n = posix.recv(stream.handle, &tmp, 0) catch |err| {
+                if (err == error.WouldBlock or err == error.ConnectionTimedOut) {
                     std.Thread.sleep(15 * std.time.ns_per_ms);
                     continue;
                 }
+                logger.err("read raw failed: {s}", .{@errorName(err)});
                 self.disconnectLocked();
                 break;
             };
             if (n == 0) {
+                logger.warn("raw EOF", .{});
                 self.disconnectLocked();
                 break;
             }
@@ -256,7 +320,15 @@ pub const Client = struct {
             const cn = @min(n, space);
             @memcpy(result_buf[result_len..][0..cn], tmp[0..cn]);
             result_len += cn;
+            logBytes("rx raw chunk", tmp[0..n]);
             if (result_len >= result_buf.len) break;
+        }
+
+        if (retry and result_len == 0) {
+            logger.warn("rawHex timeout no bytes; reconnect+retry", .{});
+            self.disconnectLocked();
+            std.Thread.sleep(50 * std.time.ns_per_ms);
+            return self.rawHexSendLocked(payload, timeout_ms, out, false);
         }
 
         return proto.hexEncode(result_buf[0..result_len], out);
@@ -280,8 +352,11 @@ pub const Client = struct {
             }
             return err;
         };
+        defer self.disconnectLocked();
 
-        stream.writeAll(pkt) catch |err| {
+        logger.info("tx ascii len={d} text={s}", .{ pkt.len, pkt });
+        sendAllSocket(stream.handle, pkt) catch |err| {
+            logger.err("writeAll ascii failed: {s}", .{@errorName(err)});
             self.disconnectLocked();
             if (retry) {
                 std.Thread.sleep(50 * std.time.ns_per_ms);
@@ -296,15 +371,17 @@ pub const Client = struct {
         while (true) {
             if (std.time.nanoTimestamp() >= deadline_ns) break;
             var tmp: [256]u8 = undefined;
-            const n = stream.read(&tmp) catch |err| {
-                if (err == error.WouldBlock) {
+            const n = posix.recv(stream.handle, &tmp, 0) catch |err| {
+                if (err == error.WouldBlock or err == error.ConnectionTimedOut) {
                     std.Thread.sleep(15 * std.time.ns_per_ms);
                     continue;
                 }
+                logger.err("read ascii failed: {s}", .{@errorName(err)});
                 self.disconnectLocked();
                 break;
             };
             if (n == 0) {
+                logger.warn("ascii EOF", .{});
                 self.disconnectLocked();
                 break;
             }
@@ -312,7 +389,15 @@ pub const Client = struct {
             const cn = @min(n, space);
             @memcpy(out[result_len..][0..cn], tmp[0..cn]);
             result_len += cn;
+            logBytes("rx ascii chunk", tmp[0..n]);
             if (result_len >= out.len) break;
+        }
+
+        if (retry and result_len == 0) {
+            logger.warn("sendAscii timeout no bytes; reconnect+retry", .{});
+            self.disconnectLocked();
+            std.Thread.sleep(50 * std.time.ns_per_ms);
+            return self.sendAsciiLocked(pkt, timeout_ms, out, false);
         }
         return result_len;
     }
@@ -333,8 +418,11 @@ pub const Client = struct {
             }
             return err;
         };
+        defer self.disconnectLocked();
 
-        stream.writeAll(pkt) catch |err| {
+        logger.info("tx ascii term len={d} text={s}", .{ pkt.len, pkt });
+        sendAllSocket(stream.handle, pkt) catch |err| {
+            logger.err("writeAll ascii term failed: {s}", .{@errorName(err)});
             self.disconnectLocked();
             if (retry) {
                 std.Thread.sleep(50 * std.time.ns_per_ms);
@@ -349,15 +437,17 @@ pub const Client = struct {
         while (true) {
             if (std.time.nanoTimestamp() >= deadline_ns) break;
             var tmp: [256]u8 = undefined;
-            const n = stream.read(&tmp) catch |err| {
-                if (err == error.WouldBlock) {
+            const n = posix.recv(stream.handle, &tmp, 0) catch |err| {
+                if (err == error.WouldBlock or err == error.ConnectionTimedOut) {
                     std.Thread.sleep(20 * std.time.ns_per_ms);
                     continue;
                 }
+                logger.err("read ascii term failed: {s}", .{@errorName(err)});
                 self.disconnectLocked();
                 break;
             };
             if (n == 0) {
+                logger.warn("ascii term EOF", .{});
                 self.disconnectLocked();
                 break;
             }
@@ -365,10 +455,18 @@ pub const Client = struct {
             const cn = @min(n, space);
             @memcpy(out[result_len..][0..cn], tmp[0..cn]);
             result_len += cn;
+            logBytes("rx ascii term chunk", tmp[0..n]);
 
             // Check for terminator
             if (std.mem.indexOfScalar(u8, out[0..result_len], term) != null) break;
             if (result_len >= out.len) break;
+        }
+
+        if (retry and result_len == 0) {
+            logger.warn("sendAsciiUntilTerm timeout no bytes; reconnect+retry", .{});
+            self.disconnectLocked();
+            std.Thread.sleep(50 * std.time.ns_per_ms);
+            return self.sendAsciiUntilTermLocked(pkt, timeout_ms, term, out, false);
         }
 
         // Clean: remove nulls, \r, \n and truncate at terminator

@@ -19,6 +19,7 @@ typedef void (*tray_callback_fn)(int menu_id);
 
 #define WM_TRAY_ICON    (WM_USER + 1)
 #define IDI_TRAY        1
+#define IDI_APPICON     1
 
 static tray_callback_fn g_callback = NULL;
 static HWND             g_hwnd = NULL;
@@ -26,13 +27,14 @@ static NOTIFYICONDATAW  g_nid;
 static HMENU            g_menu = NULL;
 static HANDLE           g_thread = NULL;
 static volatile int     g_running = 0;
-static DWORD            g_main_thread_id = 0;
+static HICON            g_icon = NULL;
 
 // Current state for menu rebuild
 static int              g_active_port = 0;
 static int              g_buzzer_on = 0;
 static char             g_names[16][65];
 static int              g_visible[16] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+static wchar_t          g_icon_path[MAX_PATH];
 
 static void rebuild_menu(void) {
     if (g_menu) DestroyMenu(g_menu);
@@ -117,7 +119,11 @@ static DWORD WINAPI tray_thread_proc(LPVOID param) {
     g_nid.uID = IDI_TRAY;
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAY_ICON;
-    g_nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    g_icon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDI_APPICON));
+    if (!g_icon && g_icon_path[0] != L'\0') {
+        g_icon = (HICON)LoadImageW(NULL, g_icon_path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+    }
+    g_nid.hIcon = g_icon ? g_icon : LoadIcon(NULL, IDI_APPLICATION);
     wcscpy(g_nid.szTip, L"TeSmart KVM");
 
     Shell_NotifyIconW(NIM_ADD, &g_nid);
@@ -136,16 +142,20 @@ static DWORD WINAPI tray_thread_proc(LPVOID param) {
 }
 
 void tray_init(tray_callback_fn callback, int active_port, int buzzer_on,
-               const char *const names[16], const int visible[16]) {
+               const char *const names[16], const int visible[16], const char *icon_path) {
     g_callback = callback;
     g_active_port = active_port;
     g_buzzer_on = buzzer_on;
-    g_main_thread_id = GetCurrentThreadId(); // called from main thread
 
     for (int i = 0; i < 16; i++) {
         strncpy(g_names[i], names[i], 64);
         g_names[i][64] = '\0';
         g_visible[i] = visible[i];
+    }
+
+    g_icon_path[0] = L'\0';
+    if (icon_path && icon_path[0] != '\0') {
+        MultiByteToWideChar(CP_UTF8, 0, icon_path, -1, g_icon_path, MAX_PATH);
     }
 
     g_running = 1;
@@ -179,11 +189,9 @@ void tray_cleanup(void) {
         DestroyMenu(g_menu);
         g_menu = NULL;
     }
+    if (g_icon) {
+        DestroyIcon(g_icon);
+        g_icon = NULL;
+    }
     g_callback = NULL;
-}
-
-// Post a WM_NULL to unblock raylib's event-waiting sleep
-void wake_main_thread(void) {
-    if (g_main_thread_id != 0)
-        PostThreadMessage(g_main_thread_id, WM_NULL, 0, 0);
 }

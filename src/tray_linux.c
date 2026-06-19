@@ -6,7 +6,6 @@
 #include <gtk/gtk.h>
 #include <libayatana-appindicator/app-indicator.h>
 #include <string.h>
-#include <X11/Xlib.h>
 
 typedef void (*tray_callback_fn)(int menu_id);
 
@@ -91,7 +90,7 @@ static GtkWidget *build_menu(int active_port, int buzzer_on,
 }
 
 void tray_init(tray_callback_fn callback, int active_port, int buzzer_on,
-               const char *const names[16], const int visible[16]) {
+               const char *const names[16], const int visible[16], const char *icon_path) {
     g_callback = callback;
 
     if (!g_gtk_inited) {
@@ -101,13 +100,30 @@ void tray_init(tray_callback_fn callback, int active_port, int buzzer_on,
 
     g_indicator = app_indicator_new(
         "tesmart-ui",
-        "preferences-desktop-keyboard",  // widely available in most icon themes
+        "preferences-desktop-keyboard",  // fallback
         APP_INDICATOR_CATEGORY_HARDWARE);
 
     app_indicator_set_status(g_indicator, APP_INDICATOR_STATUS_ACTIVE);
-    // Try multiple icon names for compatibility (KDE, GNOME, etc.)
-    // preferences-desktop-keyboard is in breeze, adwaita, hicolor
-    app_indicator_set_icon(g_indicator, "preferences-desktop-keyboard");
+    if (icon_path && icon_path[0] != '\0') {
+        char *icon_dir = g_path_get_dirname(icon_path);
+        char *icon_base = g_path_get_basename(icon_path);
+        if (icon_base) {
+            char *dot = strrchr(icon_base, '.');
+            if (dot) *dot = '\0';
+        }
+
+        if (icon_dir && icon_base && icon_base[0] != '\0') {
+            app_indicator_set_icon_theme_path(g_indicator, icon_dir);
+            app_indicator_set_icon(g_indicator, icon_base);
+        } else {
+            app_indicator_set_icon(g_indicator, "preferences-desktop-keyboard");
+        }
+
+        if (icon_base) g_free(icon_base);
+        if (icon_dir) g_free(icon_dir);
+    } else {
+        app_indicator_set_icon(g_indicator, "preferences-desktop-keyboard");
+    }
     app_indicator_set_label(g_indicator, "KVM", "KVM");
 
     g_menu = build_menu(active_port, buzzer_on, names, visible);
@@ -140,17 +156,4 @@ void tray_cleanup(void) {
     // g_menu is owned by the indicator — don't destroy it separately
     g_menu = NULL;
     g_callback = NULL;
-}
-
-// Post an empty X11 event to unblock raylib's event-waiting sleep
-void wake_main_thread(void) {
-    // Use XSendEvent to wake the GLFW event loop
-    Display *dpy = XOpenDisplay(NULL);
-    if (!dpy) return;
-    XEvent ev = {0};
-    ev.type = ClientMessage;
-    Window root = DefaultRootWindow(dpy);
-    XSendEvent(dpy, root, False, SubstructureNotifyMask, &ev);
-    XFlush(dpy);
-    XCloseDisplay(dpy);
 }

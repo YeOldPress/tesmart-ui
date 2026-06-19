@@ -36,6 +36,8 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/lib"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$APPDIR/usr/share/applications"
+mkdir -p "$APPDIR/usr/share/metainfo"
 
 # ── Step 4: Copy executable ──
 cp "$BUILD_DIR/bin/$EXECUTABLE" "$APPDIR/usr/bin/$EXECUTABLE"
@@ -67,44 +69,46 @@ EOF
 # Also place it in the standard location
 cp "$APPDIR/${EXECUTABLE}.desktop" "$APPDIR/usr/share/applications/${EXECUTABLE}.desktop" 2>/dev/null || true
 
+# Improve compatibility with desktop category validators
+sed -i 's|Categories=Utility;HardwareSettings;|Categories=Settings;HardwareSettings;|' "$APPDIR/${EXECUTABLE}.desktop"
+cp "$APPDIR/${EXECUTABLE}.desktop" "$APPDIR/usr/share/applications/${EXECUTABLE}.desktop"
+
+# ── Step 6b: Add AppStream metadata ──
+cat > "$APPDIR/usr/share/metainfo/com.tesmart.ui.appdata.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>com.tesmart.ui</id>
+    <name>TeSmart UI</name>
+    <summary>Controller for TeSmart 16-port HDMI KVM switches</summary>
+    <developer id="com.tesmart">
+        <name>TeSmart UI</name>
+    </developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>MIT</project_license>
+    <launchable type="desktop-id">${EXECUTABLE}.desktop</launchable>
+    <url type="homepage">https://github.com/</url>
+    <description>
+        <p>
+            TeSmart UI provides a desktop control panel and tray interface for
+            TeSmart 16-port HDMI KVM switches.
+        </p>
+    </description>
+    <categories>
+        <category>Utility</category>
+        <category>Settings</category>
+        <category>HardwareSettings</category>
+    </categories>
+</component>
+EOF
+
 # ── Step 7: Create icon ──
-# Use AppIcon.png if available, otherwise generate a simple one
-if [ -f "$SCRIPT_DIR/AppIcon.png" ]; then
-    cp "$SCRIPT_DIR/AppIcon.png" "$APPDIR/${EXECUTABLE}.png"
-    cp "$SCRIPT_DIR/AppIcon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/${EXECUTABLE}.png"
-    echo "    Using existing AppIcon.png"
-else
-    # Generate a simple 256x256 icon with Python
-    python3 -c "
-import struct, zlib
-
-def make_png(w, h):
-    raw = b''
-    for y in range(h):
-        raw += b'\x00'
-        for x in range(w):
-            bx = min(x, w - 1 - x)
-            by = min(y, h - 1 - y)
-            border = min(bx, by)
-            if border < w // 16:
-                raw += bytes([30, 30, 35, 255])
-            elif border < w // 12:
-                raw += bytes([0, 120, 255, 255])
-            else:
-                raw += bytes([45, 45, 55, 255])
-    def chunk(ctype, data):
-        c = ctype + data
-        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
-    ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
-    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
-
-with open('$APPDIR/${EXECUTABLE}.png', 'wb') as f:
-    f.write(make_png(256, 256))
-" 2>/dev/null || echo "    Warning: Could not generate icon"
-    if [ -f "$APPDIR/${EXECUTABLE}.png" ]; then
-        cp "$APPDIR/${EXECUTABLE}.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/${EXECUTABLE}.png"
-    fi
+if [ ! -f "$SCRIPT_DIR/AppIcon.png" ]; then
+    echo "ERROR: AppIcon.png is required for Linux bundle"
+    exit 1
 fi
+cp "$SCRIPT_DIR/AppIcon.png" "$APPDIR/${EXECUTABLE}.png"
+cp "$SCRIPT_DIR/AppIcon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/${EXECUTABLE}.png"
+echo "    Using AppIcon.png"
 
 # ── Step 8: Create AppRun ──
 cat > "$APPDIR/AppRun" << 'APPRUN'

@@ -1,5 +1,6 @@
 // gui.zig — raylib-based GUI for TeSmart UI
 const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const build_options = @import("build_options");
 const config = @import("config.zig");
@@ -24,30 +25,27 @@ const FONT_SPACING: f32 = 1.0;
 const ICON_DISPLAY_SZ: f32 = 48.0;
 
 // ── Colors ──
-const BG = rl.Color{ .r = 18, .g = 18, .b = 24, .a = 255 };
-const TILE_NORMAL = rl.Color{ .r = 32, .g = 34, .b = 42, .a = 255 };
-const TILE_ACTIVE = rl.Color{ .r = 22, .g = 100, .b = 220, .a = 255 };
-const TILE_HOVER = rl.Color{ .r = 42, .g = 44, .b = 56, .a = 255 };
-const TEXT_WHITE = rl.Color{ .r = 230, .g = 232, .b = 240, .a = 255 };
-const TEXT_DIM = rl.Color{ .r = 120, .g = 124, .b = 140, .a = 255 };
-const TOOLBAR_BG = rl.Color{ .r = 22, .g = 22, .b = 30, .a = 255 };
-const STATUS_BG = rl.Color{ .r = 16, .g = 16, .b = 22, .a = 255 };
-const DIALOG_BG = rl.Color{ .r = 28, .g = 30, .b = 38, .a = 255 };
-const DIALOG_OVERLAY = rl.Color{ .r = 0, .g = 0, .b = 0, .a = 180 };
-const BTN_NORMAL = rl.Color{ .r = 38, .g = 40, .b = 50, .a = 255 };
-const BTN_HOVER = rl.Color{ .r = 52, .g = 54, .b = 68, .a = 255 };
-const BTN_ACTIVE = rl.Color{ .r = 22, .g = 100, .b = 220, .a = 255 };
-const INPUT_BG = rl.Color{ .r = 22, .g = 24, .b = 32, .a = 255 };
-const INPUT_BORDER = rl.Color{ .r = 55, .g = 58, .b = 70, .a = 255 };
-const INPUT_FOCUS = rl.Color{ .r = 60, .g = 130, .b = 255, .a = 255 };
-const ACCENT = rl.Color{ .r = 60, .g = 130, .b = 255, .a = 255 };
-const ICON_PLACEHOLDER = rl.Color{ .r = 55, .g = 58, .b = 70, .a = 255 };
+const BG = rl.Color{ .r = 25, .g = 25, .b = 30, .a = 255 };
+const TILE_NORMAL = rl.Color{ .r = 60, .g = 60, .b = 60, .a = 255 };
+const TILE_ACTIVE = rl.Color{ .r = 0, .g = 120, .b = 255, .a = 255 };
+const TILE_HOVER = rl.Color{ .r = 80, .g = 80, .b = 80, .a = 255 };
+const TEXT_WHITE = rl.Color{ .r = 220, .g = 220, .b = 220, .a = 255 };
+const TEXT_DIM = rl.Color{ .r = 150, .g = 150, .b = 150, .a = 255 };
+const TOOLBAR_BG = rl.Color{ .r = 35, .g = 35, .b = 40, .a = 255 };
+const STATUS_BG = rl.Color{ .r = 30, .g = 30, .b = 35, .a = 255 };
+const DIALOG_BG = rl.Color{ .r = 45, .g = 45, .b = 50, .a = 255 };
+const DIALOG_OVERLAY = rl.Color{ .r = 0, .g = 0, .b = 0, .a = 160 };
+const BTN_NORMAL = rl.Color{ .r = 55, .g = 55, .b = 65, .a = 255 };
+const BTN_HOVER = rl.Color{ .r = 70, .g = 70, .b = 80, .a = 255 };
+const BTN_ACTIVE = rl.Color{ .r = 0, .g = 100, .b = 220, .a = 255 };
+const INPUT_BG = rl.Color{ .r = 35, .g = 35, .b = 40, .a = 255 };
+const INPUT_BORDER = rl.Color{ .r = 80, .g = 80, .b = 90, .a = 255 };
+const INPUT_FOCUS = rl.Color{ .r = 0, .g = 120, .b = 255, .a = 255 };
+const ACCENT = rl.Color{ .r = 0, .g = 140, .b = 255, .a = 255 };
+const ICON_PLACEHOLDER = rl.Color{ .r = 80, .g = 80, .b = 90, .a = 255 };
 const WHITE = rl.Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
-const GLOW_COLOR = rl.Color{ .r = 60, .g = 160, .b = 255, .a = 255 };
-const NEON_COLOR = rl.Color{ .r = 60, .g = 180, .b = 255, .a = 255 };
-const TILE_BORDER = rl.Color{ .r = 48, .g = 50, .b = 62, .a = 255 };
-const TILE_ACTIVE_GLOW = rl.Color{ .r = 22, .g = 100, .b = 220, .a = 40 };
-const SEPARATOR = rl.Color{ .r = 40, .g = 42, .b = 52, .a = 255 };
+const GLOW_COLOR = rl.Color{ .r = 0, .g = 180, .b = 255, .a = 255 };
+const NEON_COLOR = rl.Color{ .r = 0, .g = 200, .b = 255, .a = 255 };
 const NEON_CYCLE_NS: i128 = 2000 * std.time.ns_per_ms;
 const NEON_SEG_FRAC: f32 = 0.25; // bright segment covers 25% of perimeter
 const NEON_DURATION_NS: i128 = 3000 * std.time.ns_per_ms;
@@ -117,6 +115,51 @@ fn loadSystemFont() void {
     g_font_ok = false;
 }
 
+fn fileExists(path: []const u8) bool {
+    const f = std.fs.cwd().openFile(path, .{}) catch return false;
+    f.close();
+    return true;
+}
+
+fn setLinuxWindowIcon() void {
+    if (comptime builtin.os.tag != .linux) return;
+
+    var chosen: [1024]u8 = undefined;
+    var chosen_len: usize = 0;
+
+    if (std.posix.getenv("APPDIR")) |appdir| {
+        var p: [1024]u8 = undefined;
+        const c1 = std.fmt.bufPrint(&p, "{s}/tesmart-ui.png", .{appdir}) catch "";
+        if (c1.len > 0 and fileExists(c1)) {
+            @memcpy(chosen[0..c1.len], c1);
+            chosen_len = c1.len;
+        } else {
+            const c2 = std.fmt.bufPrint(&p, "{s}/usr/share/icons/hicolor/256x256/apps/tesmart-ui.png", .{appdir}) catch "";
+            if (c2.len > 0 and fileExists(c2)) {
+                @memcpy(chosen[0..c2.len], c2);
+                chosen_len = c2.len;
+            }
+        }
+    }
+
+    if (chosen_len == 0) {
+        if (fileExists("./AppIcon.png")) {
+            @memcpy(chosen[0..13], "./AppIcon.png");
+            chosen_len = 13;
+        }
+    }
+
+    if (chosen_len == 0) return;
+
+    var path_z: [1025:0]u8 = std.mem.zeroes([1025:0]u8);
+    @memcpy(path_z[0..chosen_len], chosen[0..chosen_len]);
+    const path: [:0]const u8 = path_z[0..chosen_len :0];
+
+    const img = rl.loadImage(path) catch return;
+    defer rl.unloadImage(img);
+    rl.setWindowIcon(img);
+}
+
 // ── Gui ──
 
 pub const Gui = struct {
@@ -169,12 +212,6 @@ pub const Gui = struct {
     filter_anim_from_h: i32 = 0,
     filter_anim_to_h: i32 = 0,
 
-    // Dirty-flag rendering (skip redraws when idle)
-    needs_redraw: bool = true,
-    last_mouse_x: i32 = -1,
-    last_mouse_y: i32 = -1,
-    last_active_port: u8 = 0,
-
     pub fn init(cfg: *config.Config, cli: *Client) Gui {
         var g = Gui{ .cfg = cfg, .cli = cli };
         g.buzzer_enabled = cfg.buzzer_enabled;
@@ -221,61 +258,38 @@ pub const Gui = struct {
         return 1.0 - inv * inv * inv;
     }
 
-    fn isAnimating(self: *const Gui) bool {
-        const now = std.time.nanoTimestamp();
-        // Port switch bounce/neon animation
-        if (self.anim_start_ns > 0 and now < self.anim_start_ns + NEON_DURATION_NS) return true;
-        // Filter resize animation
-        if (self.filter_anim_start_ns > 0 and now < self.filter_anim_start_ns + FILTER_ANIM_NS) return true;
-        // Dialog open (user is interacting)
-        if (self.dialog != .none) return true;
-        return false;
-    }
-
-    fn checkForInputChanges(self: *Gui) void {
-        const mx = rl.getMouseX();
-        const my = rl.getMouseY();
-        if (mx != self.last_mouse_x or my != self.last_mouse_y) {
-            self.needs_redraw = true;
-            self.last_mouse_x = mx;
-            self.last_mouse_y = my;
-        }
-        if (rl.isMouseButtonPressed(.left) or rl.isMouseButtonPressed(.right) or
-            rl.isMouseButtonDown(.left) or rl.getMouseWheelMove() != 0)
-            self.needs_redraw = true;
-        if (rl.isWindowResized())
-            self.needs_redraw = true;
-        // Polled port changed
-        const polled = self.polled_port.load(.monotonic);
-        if (polled != self.last_active_port) {
-            self.needs_redraw = true;
-            self.last_active_port = polled;
-        }
-        // Tray action pending
-        if (tray.hasPendingAction())
-            self.needs_redraw = true;
-    }
-
     fn setStatus(self: *Gui, comptime fmt: []const u8, args: anytype) void {
         const result = std.fmt.bufPrint(&self.status_text, fmt, args) catch {
             self.status_len = 0;
             return;
         };
         self.status_len = result.len;
-        self.needs_redraw = true;
     }
 
     fn setStatusStr(self: *Gui, s: []const u8) void {
         const n = @min(s.len, self.status_text.len);
         @memcpy(self.status_text[0..n], s[0..n]);
         self.status_len = n;
-        self.needs_redraw = true;
+    }
+
+    fn hideToTray(self: *Gui) void {
+        rl.setWindowState(.{ .window_hidden = true });
+        self.setStatusStr("Running in system tray");
+        self.status_hold_until = std.time.nanoTimestamp() + 2 * std.time.ns_per_s;
+    }
+
+    fn showFromTray(self: *Gui) void {
+        _ = self;
+        rl.clearWindowState(.{ .window_hidden = true });
+        rl.restoreWindow();
+        rl.setWindowFocused();
     }
 
     pub fn run(self: *Gui) void {
         if (!build_options.verbose) rl.setTraceLogLevel(.none);
         rl.initWindow(WINDOW_W, WINDOW_H, "TeSmart 16-Port HDMI Switch");
         defer rl.closeWindow();
+        setLinuxWindowIcon();
         rl.setTargetFPS(60);
 
         // Resize for initial filter state
@@ -301,27 +315,12 @@ pub const Gui = struct {
             self.prepareConnectionFields();
         }
 
-        // Start in event-waiting mode (idle, ~0% CPU)
-        var event_waiting = true;
-        rl.enableEventWaiting();
-
-        while (!rl.windowShouldClose() and !self.quit_requested) {
-            self.checkForInputChanges();
-
-            const animating = self.isAnimating();
-
-            // Switch between event-waiting (idle) and continuous (animating) modes
-            if (animating and event_waiting) {
-                rl.disableEventWaiting();
-                event_waiting = false;
-            } else if (!animating and !event_waiting) {
-                rl.enableEventWaiting();
-                event_waiting = true;
+        while (!self.quit_requested) {
+            if (rl.windowShouldClose()) {
+                self.hideToTray();
             }
-
             self.update();
             self.draw();
-            self.needs_redraw = false;
         }
 
         // Unload icon textures
@@ -365,7 +364,6 @@ pub const Gui = struct {
 
         const tex = rl.loadTexture(path_slice) catch return;
         if (tex.width > 0 and tex.height > 0) {
-            rl.setTextureFilter(tex, .bilinear);
             self.icon_textures[idx] = tex;
             self.icon_loaded[idx] = true;
         }
@@ -482,12 +480,10 @@ pub const Gui = struct {
             self.pending_port = 0;
             self.pending_until_ns = 0;
             self.setStatus("Switch to {d} failed", .{port});
-            tray.wakeMainThread();
             return;
         };
         if (self.cfg.fast_mode) {
             self.setStatus("Switched (fast) → {d}", .{port});
-            tray.wakeMainThread();
             return;
         }
         if (self.cfg.verify_after_set) {
@@ -497,17 +493,14 @@ pub const Gui = struct {
                     if (cur == port) {
                         self.clearPendingIfMatch(port);
                         self.setStatus("Switched to input {d}", .{port});
-                        tray.wakeMainThread();
                         return;
                     }
                 } else |_| {}
             }
             self.setStatusStr("Switched (unverified)");
-            tray.wakeMainThread();
             return;
         }
         self.setStatus("Switched to input {d}", .{port});
-        tray.wakeMainThread();
     }
 
     fn processTrayAction(self: *Gui) void {
@@ -540,7 +533,9 @@ pub const Gui = struct {
                 self.setStatusStr(if (self.buzzer_enabled) "Buzzer enabled" else "Buzzer disabled");
                 self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
             },
-            .show_window => {},
+            .show_window => {
+                self.showFromTray();
+            },
             .quit => {
                 self.quit_requested = true;
             },
@@ -597,29 +592,26 @@ pub const Gui = struct {
     fn pingThread(self: *Gui) void {
         self.setStatusStr("Pinging...");
         self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
-        tray.wakeMainThread();
         const start = std.time.nanoTimestamp();
-        self.cli.ping() catch {
-            self.setStatusStr("Ping failed");
-            self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
-            tray.wakeMainThread();
+        self.cli.ping() catch |err| {
+            self.setStatus("Ping failed: {s} → {s}:{d}", .{ @errorName(err), self.cfg.ip[0..self.cfg.ip_len], self.cfg.port });
+            self.status_hold_until = std.time.nanoTimestamp() + 5 * std.time.ns_per_s;
             return;
         };
         const elapsed_ms = @divFloor(std.time.nanoTimestamp() - start, std.time.ns_per_ms);
         self.setStatus("Ping OK ({d} ms)", .{elapsed_ms});
         self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
-        tray.wakeMainThread();
     }
 
     fn getToolbarAction(self: *Gui) ToolbarAction {
         _ = self;
         const mx = rl.getMouseX();
         const my = rl.getMouseY();
-        if (my < 5 or my >= 35) return .none;
+        if (my < 0 or my >= TOOLBAR_H) return .none;
         const buttons = [_]ToolbarAction{ .connection, .edit, .network, .ping, .buzzer, .filter, .about };
         for (buttons, 0..) |btn, i| {
-            const bx: i32 = @intCast(12 + i * 92);
-            if (mx >= bx and mx < bx + 82) return btn;
+            const bx: i32 = @intCast(10 + i * 90);
+            if (mx >= bx and mx < bx + 80) return btn;
         }
         return .none;
     }
@@ -638,6 +630,7 @@ pub const Gui = struct {
     }
 
     fn pollLoop(self: *Gui) void {
+        var was_error: bool = false;
         while (self.poll_running.load(.monotonic)) {
             // Skip polling during switch suppression window to avoid stale reads
             const suppress_until = self.poll_suppress_until.load(.acquire);
@@ -647,11 +640,23 @@ pub const Gui = struct {
                 continue;
             }
             if (self.cli.getActiveInput()) |port| {
-                const changed = (port != self.polled_port.load(.monotonic));
+                if (was_error) {
+                    was_error = false;
+                    self.setStatus("Reconnected — Active: {d}", .{port});
+                    self.status_hold_until = std.time.nanoTimestamp() + 3 * std.time.ns_per_s;
+                }
                 self.polled_port.store(port, .monotonic);
                 self.poll_error = false;
-                if (changed) tray.wakeMainThread();
-            } else |_| {
+            } else |err| {
+                if (!was_error) {
+                    was_error = true;
+                    self.setStatus("No connection ({s}) → {s}:{d}", .{
+                        @errorName(err),
+                        self.cfg.ip[0..self.cfg.ip_len],
+                        self.cfg.port,
+                    });
+                    self.status_hold_until = std.time.nanoTimestamp() + 5 * std.time.ns_per_s;
+                }
                 self.poll_error = true;
             }
             std.Thread.sleep(@as(u64, self.cfg.poll_interval_ms) * std.time.ns_per_ms);
@@ -681,34 +686,27 @@ pub const Gui = struct {
 
     fn drawToolbar(self: *Gui) void {
         rl.drawRectangle(0, 0, rl.getScreenWidth(), TOOLBAR_H, TOOLBAR_BG);
-        // Separator line below toolbar
-        rl.drawRectangle(0, TOOLBAR_H - 1, rl.getScreenWidth(), 1, SEPARATOR);
         const labels = [_][:0]const u8{ "Connect", "Edit", "Network", "Ping", "Buzzer", "Filter", "About" };
         const mx = rl.getMouseX();
         const my = rl.getMouseY();
         for (labels, 0..) |label, i| {
-            const bx: i32 = @intCast(12 + i * 92);
-            const by: i32 = 5;
-            const bw: i32 = 82;
-            const bh: i32 = 30;
-            const hovered = (mx >= bx and mx < bx + bw and my >= by and my < by + bh);
+            const bx: i32 = @intCast(10 + i * 90);
+            const hovered = (mx >= bx and mx < bx + 80 and my >= 4 and my < TOOLBAR_H - 4);
+            // Buzzer button (index 4): green when enabled
             const is_buzzer = (i == 4);
+            // Filter button (index 5): green when filtering
             const is_filter = (i == 5);
             const color = if (is_buzzer and self.buzzer_enabled)
-                rl.Color{ .r = 20, .g = 120, .b = 90, .a = 255 }
+                rl.Color{ .r = 0, .g = 120, .b = 80, .a = 255 }
             else if (is_filter and self.hide_inactive)
-                rl.Color{ .r = 20, .g = 120, .b = 90, .a = 255 }
+                rl.Color{ .r = 0, .g = 120, .b = 80, .a = 255 }
             else if (hovered)
                 BTN_HOVER
             else
                 BTN_NORMAL;
-            rl.drawRectangleRounded(.{ .x = @floatFromInt(bx), .y = @floatFromInt(by), .width = @floatFromInt(bw), .height = @floatFromInt(bh) }, 0.4, 8, color);
-            // Subtle border on toolbar buttons
-            if (!hovered and !(is_buzzer and self.buzzer_enabled) and !(is_filter and self.hide_inactive)) {
-                rl.drawRectangleRoundedLines(.{ .x = @floatFromInt(bx), .y = @floatFromInt(by), .width = @floatFromInt(bw), .height = @floatFromInt(bh) }, 0.4, 8, TILE_BORDER);
-            }
+            rl.drawRectangleRounded(.{ .x = @floatFromInt(bx), .y = 5, .width = 80, .height = 30 }, 0.3, 6, color);
             const tw = measureTxt(label, SMALL_SZ);
-            drawTxt(label, bx + @divFloor(bw - tw, 2), by + @divFloor(bh - SMALL_FONT, 2), SMALL_SZ, TEXT_WHITE);
+            drawTxt(label, bx + @divFloor(80 - tw, 2), 5 + @divFloor(30 - SMALL_FONT, 2), SMALL_SZ, TEXT_WHITE);
         }
     }
 
@@ -793,17 +791,6 @@ pub const Gui = struct {
                 TILE_NORMAL;
             const color = rl.Color{ .r = base_color.r, .g = base_color.g, .b = base_color.b, .a = tile_alpha };
 
-            // Soft glow behind active tile (always, not just during animation)
-            if (port == self.active_port and !is_animating) {
-                const glow_a = TILE_ACTIVE_GLOW;
-                rl.drawRectangleRounded(.{
-                    .x = rect.x - 4,
-                    .y = rect.y - 4,
-                    .width = rect.width + 8,
-                    .height = rect.height + 8,
-                }, 0.12, 8, rl.Color{ .r = glow_a.r, .g = glow_a.g, .b = glow_a.b, .a = glow_a.a });
-            }
-
             // Glow rings behind the tile during animation
             if (is_animating) {
                 // Outer expanding ring
@@ -816,7 +803,7 @@ pub const Gui = struct {
                         .y = rect.y - ring1_expand - 2,
                         .width = rect.width + (ring1_expand + 2) * 2,
                         .height = rect.height + (ring1_expand + 2) * 2,
-                    }, 0.12, 8, r1_col);
+                    }, 0.15, 8, r1_col);
                 }
                 // Inner glow
                 const inner_alpha: u8 = @intFromFloat((1.0 - anim_t) * 160);
@@ -826,16 +813,10 @@ pub const Gui = struct {
                     .y = rect.y - 3,
                     .width = rect.width + 6,
                     .height = rect.height + 6,
-                }, 0.12, 8, inner_col);
+                }, 0.15, 8, inner_col);
             }
 
-            rl.drawRectangleRounded(rect, 0.12, 8, color);
-
-            // Subtle border on non-active tiles
-            if (port != self.active_port and !is_animating) {
-                const border_col = rl.Color{ .r = TILE_BORDER.r, .g = TILE_BORDER.g, .b = TILE_BORDER.b, .a = tile_alpha };
-                rl.drawRectangleRoundedLines(rect, 0.12, 8, border_col);
-            }
+            rl.drawRectangleRounded(rect, 0.15, 8, color);
 
             // Color flash overlay on the tile (bright white that fades fast)
             if (is_animating and anim_t < 0.4) {
@@ -992,9 +973,7 @@ pub const Gui = struct {
         const sh = rl.getScreenHeight();
         const sw = rl.getScreenWidth();
         const y = sh - STATUS_H;
-        // Separator line above status bar
-        rl.drawRectangle(0, y, sw, 1, SEPARATOR);
-        rl.drawRectangle(0, y + 1, sw, STATUS_H - 1, STATUS_BG);
+        rl.drawRectangle(0, y, sw, STATUS_H, STATUS_BG);
         var z: [257:0]u8 = std.mem.zeroes([257:0]u8);
         const n = @min(self.status_len, 256);
         @memcpy(z[0..n], self.status_text[0..n]);
@@ -1422,7 +1401,6 @@ pub const Gui = struct {
     fn netGetThread(self: *Gui) void {
         const net_cfg = self.cli.getNetworkConfigASCII() catch {
             self.setStatusStr("Failed to read network config");
-            tray.wakeMainThread();
             return;
         };
         self.input_fields[0] = InputField.initWith(net_cfg.ipSlice());
@@ -1436,7 +1414,6 @@ pub const Gui = struct {
         self.input_fields[3] = InputField.initWith(ps);
         self.input_fields[3].active = true;
         self.setStatusStr("Fetched network configuration");
-        tray.wakeMainThread();
     }
 
     fn netSetThread(self: *Gui) void {
@@ -1446,12 +1423,10 @@ pub const Gui = struct {
         const port_s = self.input_fields[3].slice();
         const p = std.fmt.parseUnsigned(u16, port_s, 10) catch {
             self.setStatusStr("Invalid port");
-            tray.wakeMainThread();
             return;
         };
         self.cli.setNetworkConfigASCII(ip, p, mask, gw) catch {
             self.setStatusStr("Failed to set network config");
-            tray.wakeMainThread();
             return;
         };
         @memcpy(self.cfg.ip[0..ip.len], ip);
@@ -1460,7 +1435,6 @@ pub const Gui = struct {
         config.save(self.cfg) catch {};
         self.cli.setTarget(ip, p, self.cfg.get_timeout_ms, self.cfg.set_timeout_ms);
         self.setStatusStr("Network config sent — power-cycle switch");
-        tray.wakeMainThread();
     }
 
     // ── Raw Hex dialog ──
@@ -1510,10 +1484,8 @@ pub const Gui = struct {
         const hex = self.input_fields[0].slice();
         self.dialog_result_len = self.cli.rawHexSend(hex, 1200, &self.dialog_result) catch {
             self.setStatusStr("Raw hex failed");
-            tray.wakeMainThread();
             return;
         };
-        tray.wakeMainThread();
     }
 
     // ── About dialog ──
@@ -1544,10 +1516,10 @@ pub const Gui = struct {
 
         const rect = field.rect;
         const focused = (self.focused_field != null and self.focused_field.? == idx);
-        const border = if (focused) INPUT_FOCUS else TILE_BORDER;
+        const border = if (focused) INPUT_FOCUS else INPUT_BORDER;
 
-        rl.drawRectangleRounded(rect, 0.25, 6, INPUT_BG);
-        rl.drawRectangleRoundedLines(rect, 0.25, 6, border);
+        rl.drawRectangleRounded(rect, 0.2, 4, INPUT_BG);
+        rl.drawRectangleRoundedLines(rect, 0.2, 4, border);
 
         var z: [129:0]u8 = std.mem.zeroes([129:0]u8);
         const n = @min(field.len, 128);
@@ -1710,10 +1682,8 @@ fn perimPoint(r: rl.Rectangle, t: f32, side_fracs: *const [4]f32) rl.Vector2 {
 }
 
 fn drawDialogBox(x: f32, y: f32, w: f32, h: f32) void {
-    // Shadow behind dialog
-    rl.drawRectangleRounded(.{ .x = x + 4, .y = y + 4, .width = w, .height = h }, 0.06, 8, rl.Color{ .r = 0, .g = 0, .b = 0, .a = 80 });
-    rl.drawRectangleRounded(.{ .x = x, .y = y, .width = w, .height = h }, 0.06, 8, DIALOG_BG);
-    rl.drawRectangleRoundedLines(.{ .x = x, .y = y, .width = w, .height = h }, 0.06, 8, TILE_BORDER);
+    rl.drawRectangleRounded(.{ .x = x, .y = y, .width = w, .height = h }, 0.05, 8, DIALOG_BG);
+    rl.drawRectangleRoundedLines(.{ .x = x, .y = y, .width = w, .height = h }, 0.05, 8, INPUT_BORDER);
 }
 
 fn drawButton(x: i32, y: i32, w: i32, h: i32, label: [:0]const u8, bg: rl.Color) void {
@@ -1721,17 +1691,12 @@ fn drawButton(x: i32, y: i32, w: i32, h: i32, label: [:0]const u8, bg: rl.Color)
     const my = rl.getMouseY();
     const hovered = (mx >= x and mx < x + w and my >= y and my < y + h);
     const color = if (hovered) BTN_HOVER else bg;
-    const rect = rl.Rectangle{
+    rl.drawRectangleRounded(.{
         .x = @floatFromInt(x),
         .y = @floatFromInt(y),
         .width = @floatFromInt(w),
         .height = @floatFromInt(h),
-    };
-    rl.drawRectangleRounded(rect, 0.35, 8, color);
-    // Border on non-accent buttons
-    if (bg.r == BTN_NORMAL.r and bg.g == BTN_NORMAL.g and bg.b == BTN_NORMAL.b and !hovered) {
-        rl.drawRectangleRoundedLines(rect, 0.35, 8, TILE_BORDER);
-    }
+    }, 0.3, 6, color);
     const tw = measureTxt(label, SMALL_SZ);
     drawTxt(label, x + @divFloor(w - tw, 2), y + @divFloor(h - SMALL_FONT, 2), SMALL_SZ, TEXT_WHITE);
 }

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TeSmart UI
+Comment=TeSmart 16-Port HDMI KVM Switch Controller
+Exec=tesmart-ui
+Icon=tesmart-ui
+Categories=Utility;HardwareSettings;
+Terminal=false
+StartupNotify=true

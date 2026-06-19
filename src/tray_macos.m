@@ -8,6 +8,22 @@ typedef void (*tray_callback_fn)(int menu_id);
 static tray_callback_fn g_callback = NULL;
 static NSStatusItem    *g_statusItem = nil;
 
+static NSImage *loadTrayImage(const char *icon_path) {
+    if (!icon_path || icon_path[0] == '\0') return nil;
+
+    NSString *path = [NSString stringWithUTF8String:icon_path];
+    NSImage *img = [[NSImage alloc] initWithContentsOfFile:path];
+    if (!img) return nil;
+
+    CGFloat side = [NSStatusBar systemStatusBar].thickness - 4.0;
+    if (side < 16.0) side = 16.0;
+
+    [img setSize:NSMakeSize(side, side)];
+    [img setScalesWhenResized:YES];
+    [img setTemplate:NO];
+    return img;
+}
+
 @interface TrayDelegate : NSObject
 - (void)menuItemClicked:(id)sender;
 @end
@@ -20,13 +36,21 @@ static NSStatusItem    *g_statusItem = nil;
 
 static TrayDelegate *g_delegate = nil;
 
-void tray_init(tray_callback_fn callback, int active_port, int buzzer_on, const char *const names[16], const int visible[16]) {
+void tray_init(tray_callback_fn callback, int active_port, int buzzer_on, const char *const names[16], const int visible[16], const char *icon_path) {
     g_callback = callback;
     g_delegate = [[TrayDelegate alloc] init];
 
     g_statusItem = [[NSStatusBar systemStatusBar]
-        statusItemWithLength:NSVariableStatusItemLength];
-    g_statusItem.button.title = @"KVM";
+        statusItemWithLength:NSSquareStatusItemLength];
+    NSImage *img = loadTrayImage(icon_path);
+    if (img) {
+        g_statusItem.button.image = img;
+        g_statusItem.button.imageScaling = NSImageScaleProportionallyUpOrDown;
+        g_statusItem.button.title = @"";
+    } else {
+        g_statusItem.button.title = @"KVM";
+        g_statusItem.length = NSVariableStatusItemLength;
+    }
 
     // Build initial menu via tray_update
     extern void tray_update(int, int, const char *const[16], const int[16]);
@@ -102,20 +126,4 @@ void tray_cleanup(void) {
     }
     g_delegate = nil;
     g_callback = NULL;
-}
-
-// Post a synthetic NSEvent to unblock raylib's event-waiting sleep
-void wake_main_thread(void) {
-    @autoreleasepool {
-        NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
-                                            location:NSZeroPoint
-                                       modifierFlags:0
-                                           timestamp:0
-                                        windowNumber:0
-                                             context:nil
-                                             subtype:0
-                                               data1:0
-                                               data2:0];
-        [NSApp postEvent:event atStart:YES];
-    }
 }

@@ -1,3 +1,10 @@
-zig-out/
-zig-cache/
+# macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+__MACOSX/
+._*
+
+# Zig build artifacts
 .zig-cache/
+zig-out/

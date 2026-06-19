@@ -1,5 +1,11 @@
 const std = @import("std");
 
+fn fileExists(path: []const u8) bool {
+    const file = std.fs.cwd().openFile(path, .{}) catch return false;
+    file.close();
+    return true;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -31,6 +37,11 @@ pub fn build(b: *std.Build) void {
     // ---------- system tray (per-platform) ----------
     switch (target.result.os.tag) {
         .macos => {
+            if (b.lazyDependency("xcode_frameworks", .{})) |dep| {
+                exe_mod.addSystemFrameworkPath(dep.path("Frameworks"));
+                exe_mod.addSystemIncludePath(dep.path("include"));
+                exe_mod.addLibraryPath(dep.path("lib"));
+            }
             exe_mod.addCSourceFile(.{
                 .file = b.path("src/tray_macos.m"),
                 .flags = &.{"-fobjc-arc"},
@@ -45,13 +56,18 @@ pub fn build(b: *std.Build) void {
             // pkg-config names — requires: gtk3-devel libayatana-appindicator-gtk3-devel
             exe_mod.linkSystemLibrary("ayatana-appindicator3-0.1", .{});
             exe_mod.linkSystemLibrary("gtk+-3.0", .{});
-            exe_mod.linkSystemLibrary("x11", .{});
         },
         .windows => {
             exe_mod.addCSourceFile(.{
                 .file = b.path("src/tray_windows.c"),
                 .flags = &.{},
             });
+            if (fileExists("AppIcon.ico")) {
+                exe_mod.addWin32ResourceFile(.{
+                    .file = b.path("src/app_icon.rc"),
+                    .include_paths = &.{b.path(".")},
+                });
+            }
             exe_mod.linkSystemLibrary("shell32", .{});
             exe_mod.linkSystemLibrary("user32", .{});
         },

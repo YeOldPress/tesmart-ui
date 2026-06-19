@@ -149,7 +149,8 @@ fn configDir(buf: []u8) !usize {
             return total;
         },
         .windows => {
-            const appdata = std.posix.getenv("APPDATA") orelse return error.NoAppData;
+            const appdata = std.process.getEnvVarOwned(std.heap.page_allocator, "APPDATA") catch return error.NoAppData;
+            defer std.heap.page_allocator.free(appdata);
             const suffix = "\\tesmart-ui";
             const total = appdata.len + suffix.len;
             if (total > buf.len) return error.BufferTooSmall;
